@@ -8,20 +8,20 @@ const OUTPUT_FILE = `${OUTPUT_DIR}/product.json`;
 
 // ---------- helpers ----------
 
-// Стискає будь-які пробіли/переноси в один пробіл. Порожній результат -> null.
+// Collapses any whitespace/newlines into single spaces. Empty result -> null.
 const cleanText = (text) => {
   if (text == null) return null;
   const cleaned = text.replace(/\s+/g, ' ').trim();
   return cleaned === '' ? null : cleaned;
 };
 
-// "$1,259.99" -> 1259.99. Якщо числа немає -> null.
+// "$1,259.99" -> 1259.99. No number found -> null.
 const parsePrice = (text) => {
   const match = cleanText(text)?.match(/\d[\d,]*(?:\.\d+)?/);
   return match ? Number(match[0].replace(/,/g, '')) : null;
 };
 
-// Текст зі сторінки -> один із чотирьох дозволених статусів.
+// Page text -> one of the four allowed statuses.
 const normalizeAvailability = (text) => {
   const lower = cleanText(text)?.toLowerCase() ?? '';
   if (lower.includes('out of stock') || lower.includes('sold out')) return 'out_of_stock';
@@ -30,7 +30,7 @@ const normalizeAvailability = (text) => {
   return null;
 };
 
-// Відносний або абсолютний href -> повний URL. Немає href -> null.
+// Relative or absolute href -> full URL. No href -> null.
 const toAbsoluteUrl = (href, baseUrl) => {
   if (!href) return null;
   try {
@@ -40,7 +40,7 @@ const toAbsoluteUrl = (href, baseUrl) => {
   }
 };
 
-// "Home" і поточний товар (останній, active) у категорії не входять.
+// "Home" and the current product (the last, active item) are not categories.
 const extractBreadcrumbs = (items, baseUrl) =>
   items
     .filter((item) => !item.isCurrent && cleanText(item.text)?.toLowerCase() !== 'home')
@@ -49,8 +49,8 @@ const extractBreadcrumbs = (items, baseUrl) =>
       url: toAbsoluteUrl(item.href, baseUrl),
     }));
 
-// Один і той самий файл є в різних розмірах (-400x400, -1024x1024).
-// Приводимо до найбільшого розміру, щоб Set прибрав дублікати.
+// The same image shows up in different sizes (-400x400, -1024x1024).
+// Switch everything to the big one so the Set can drop duplicates.
 const toLargeImageUrl = (src) => src.replace(/-\d+x\d+(\.\w+)$/, '-1024x1024$1');
 
 const extractImages = (mainSrc, gallerySrcs, baseUrl) => {
@@ -63,12 +63,12 @@ const extractImages = (mainSrc, gallerySrcs, baseUrl) => {
       .map(toLargeImageUrl)
   );
   additional.delete(main);
-  // Карусель перемішує слайди в DOM, тому сортуємо за номером у назві файлу.
+  // The carousel shuffles slides in the DOM, so sort by the number in the file name.
   const sorted = [...additional].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   return { image_url: main, additional_image_urls: sorted };
 };
 
-// Сирі рядки таблиці -> [{ name, value }]. Рядки без назви пропускаємо.
+// Raw table rows -> [{ name, value }]. Rows without a name are skipped.
 const extractSpecs = (rows) =>
   rows
     .map((row) => ({ name: cleanText(row.name), value: cleanText(row.value) }))
@@ -82,7 +82,8 @@ const parseRating = (text) => {
     : { star_rating: null, review_count: null };
 };
 
-// Бренд — це те, що стоїть у <title> перед назвою товару ("MSI MAG Z890..." -> "MSI").
+// No brand element on the page, so take whatever comes before the product
+// name in <title> ("MSI MAG Z890..." -> "MSI").
 const extractBrand = (pageTitle, productTitle) => {
   if (!pageTitle || !productTitle || !pageTitle.includes(productTitle)) return null;
   return cleanText(pageTitle.split(productTitle)[0]);
@@ -91,7 +92,11 @@ const extractBrand = (pageTitle, productTitle) => {
 const findSpecValue = (specs, namePattern) =>
   specs.find((spec) => namePattern.test(spec.name))?.value ?? null;
 
-// Текст першого елемента за селектором, або null, якщо елемента немає.
+// Waits up to 5s for an optional element. Never throws.
+const waitIfPresent = (page, selector) =>
+  page.waitForSelector(selector, { state: 'attached', timeout: 5000 }).catch(() => null);
+
+// Text of the first match, or null if there is no such element.
 const textOf = async (page, selector) => {
   const locator = page.locator(selector).first();
   return (await locator.count()) ? cleanText(await locator.innerText()) : null;
@@ -122,7 +127,7 @@ const scrapeProduct = async (page) => {
     );
   const category_tree = extractBreadcrumbs(breadcrumbItems, url);
 
-  // Ціна — тільки з #prices-wrapper, щоб не зачепити блок "Recommended for you".
+  // Price only from #prices-wrapper, so we never pick up "Recommended for you".
   const currentPrice = parsePrice(await textOf(page, '#prices-new'));
   const oldPrice = parsePrice(await textOf(page, '#prices-wrapper .prices-old, #prices-wrapper .price-old'));
   const hasDiscount = oldPrice !== null && currentPrice !== null && oldPrice > currentPrice;
@@ -163,11 +168,17 @@ const scrapeProduct = async (page) => {
 };
 
 const main = async () => {
-  const browser = await chromium.launch({ headless: true });
+  // The site (Akamai) returns 403 to headless browsers, so the window is
+  // visible by default. Try HEADLESS=true npm run scrape to see for yourself.
+  const browser = await chromium.launch({ headless: process.env.HEADLESS === 'true' });
   try {
     const page = await browser.newPage();
     await page.goto(PRODUCT_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#prices-new');
+    // Rating and gallery are filled in by JS a bit later. They may legitimately
+    // be missing, so wait a few seconds and move on if they never show up.
+    await waitIfPresent(page, '#average-rating-info');
+    await waitIfPresent(page, '#carouselImages img');
 
     const product = await scrapeProduct(page);
 
