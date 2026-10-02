@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "scrape": "node src/scrape.js"
+    "scrape": "node src/scrape.js",
+    "explore": "node src/explore.js"
   },
   "keywords": [],
   "author": "",

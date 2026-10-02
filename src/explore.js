@@ -21,7 +21,7 @@ try {
   console.log(`\nJSON-LD blocks: ${jsonLd.length}`);
   jsonLd.forEach((text, i) => console.log(`--- #${i}\n${text.trim()}`));
 
-  // усі hidden-поля: звідси шукаємо ID товару
+  // all hidden inputs, the product ID should be among them
   const hidden = await page.$$eval('input[type="hidden"]', (inputs) =>
     inputs.map((el) => ({ name: el.name, value: el.value }))
   );
