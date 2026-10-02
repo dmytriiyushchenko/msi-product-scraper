@@ -161,3 +161,25 @@ const scrapeProduct = async (page) => {
     scraped_at: new Date().toISOString(),
   };
 };
+
+const main = async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.goto(PRODUCT_URL, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#prices-new');
+
+    const product = await scrapeProduct(page);
+
+    await mkdir(OUTPUT_DIR, { recursive: true });
+    await writeFile(OUTPUT_FILE, JSON.stringify(product, null, 2));
+    console.log(`Saved ${OUTPUT_FILE}`);
+  } catch (error) {
+    console.error('Scraping failed:', error.message);
+    process.exitCode = 1;
+  } finally {
+    await browser.close();
+  }
+};
+
+await main();
