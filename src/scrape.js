@@ -65,3 +65,32 @@ const extractImages = (mainSrc, gallerySrcs, baseUrl) => {
   additional.delete(main);
   return { image_url: main, additional_image_urls: [...additional] };
 };
+
+// Сирі рядки таблиці -> [{ name, value }]. Рядки без назви пропускаємо.
+const extractSpecs = (rows) =>
+  rows
+    .map((row) => ({ name: cleanText(row.name), value: cleanText(row.value) }))
+    .filter((spec) => spec.name !== null);
+
+// "4.7 (3)" -> { star_rating: 4.7, review_count: 3 }
+const parseRating = (text) => {
+  const match = cleanText(text)?.match(/(\d+(?:\.\d+)?)\s*\((\d+)\)/);
+  return match
+    ? { star_rating: Number(match[1]), review_count: Number(match[2]) }
+    : { star_rating: null, review_count: null };
+};
+
+// Бренд — це те, що стоїть у <title> перед назвою товару ("MSI MAG Z890..." -> "MSI").
+const extractBrand = (pageTitle, productTitle) => {
+  if (!pageTitle || !productTitle || !pageTitle.includes(productTitle)) return null;
+  return cleanText(pageTitle.split(productTitle)[0]);
+};
+
+const findSpecValue = (specs, namePattern) =>
+  specs.find((spec) => namePattern.test(spec.name))?.value ?? null;
+
+// Текст першого елемента за селектором, або null, якщо елемента немає.
+const textOf = async (page, selector) => {
+  const locator = page.locator(selector).first();
+  return (await locator.count()) ? cleanText(await locator.innerText()) : null;
+};
