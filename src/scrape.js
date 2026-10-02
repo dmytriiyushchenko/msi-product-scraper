@@ -39,3 +39,29 @@ const toAbsoluteUrl = (href, baseUrl) => {
     return null;
   }
 };
+
+// "Home" і поточний товар (останній, active) у категорії не входять.
+const extractBreadcrumbs = (items, baseUrl) =>
+  items
+    .filter((item) => !item.isCurrent && cleanText(item.text)?.toLowerCase() !== 'home')
+    .map((item) => ({
+      name: cleanText(item.text),
+      url: toAbsoluteUrl(item.href, baseUrl),
+    }));
+
+// Один і той самий файл є в різних розмірах (-400x400, -1024x1024).
+// Приводимо до найбільшого розміру, щоб Set прибрав дублікати.
+const toLargeImageUrl = (src) => src.replace(/-\d+x\d+(\.\w+)$/, '-1024x1024$1');
+
+const extractImages = (mainSrc, gallerySrcs, baseUrl) => {
+  const toUrl = (src) => toAbsoluteUrl(src, baseUrl);
+  const main = mainSrc ? toLargeImageUrl(toUrl(mainSrc)) : null;
+  const additional = new Set(
+    gallerySrcs
+      .map(toUrl)
+      .filter(Boolean)
+      .map(toLargeImageUrl)
+  );
+  additional.delete(main);
+  return { image_url: main, additional_image_urls: [...additional] };
+};
