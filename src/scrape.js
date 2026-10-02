@@ -63,7 +63,9 @@ const extractImages = (mainSrc, gallerySrcs, baseUrl) => {
       .map(toLargeImageUrl)
   );
   additional.delete(main);
-  return { image_url: main, additional_image_urls: [...additional] };
+  // Карусель перемішує слайди в DOM, тому сортуємо за номером у назві файлу.
+  const sorted = [...additional].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return { image_url: main, additional_image_urls: sorted };
 };
 
 // Сирі рядки таблиці -> [{ name, value }]. Рядки без назви пропускаємо.
