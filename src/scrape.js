@@ -94,3 +94,68 @@ const textOf = async (page, selector) => {
   const locator = page.locator(selector).first();
   return (await locator.count()) ? cleanText(await locator.innerText()) : null;
 };
+
+// ---------- scraping ----------
+
+const scrapeProduct = async (page) => {
+  const url = page.url();
+
+  const title = await textOf(page, '.product-detail h2.title');
+  const brand = extractBrand(await page.title(), title);
+
+  const itemId = await page
+    .locator('#product_qty input[name="product_id"]')
+    .first()
+    .inputValue()
+    .catch(() => null);
+
+  const breadcrumbItems = await page
+    .locator('ol.breadcrumb li.breadcrumb-item')
+    .evaluateAll((items) =>
+      items.map((li) => ({
+        text: li.textContent,
+        href: li.querySelector('a')?.getAttribute('href') ?? null,
+        isCurrent: li.classList.contains('active'),
+      }))
+    );
+  const category_tree = extractBreadcrumbs(breadcrumbItems, url);
+
+  // Ціна — тільки з #prices-wrapper, щоб не зачепити блок "Recommended for you".
+  const currentPrice = parsePrice(await textOf(page, '#prices-new'));
+  const oldPrice = parsePrice(await textOf(page, '#prices-wrapper .prices-old, #prices-wrapper .price-old'));
+  const hasDiscount = oldPrice !== null && currentPrice !== null && oldPrice > currentPrice;
+
+  const mainSrc = await page.locator('#imagePopup').first().getAttribute('src').catch(() => null);
+  const gallerySrcs = await page
+    .locator('#carouselImages img')
+    .evaluateAll((imgs) => imgs.map((img) => img.getAttribute('src')));
+
+  const specRows = await page.locator('table.table-borderless tr').evaluateAll((rows) =>
+    rows.map((row) => ({
+      name: row.querySelector('th')?.textContent ?? null,
+      value: row.querySelector('td')?.textContent ?? null,
+    }))
+  );
+  const specs = extractSpecs(specRows);
+
+  return {
+    url,
+    item_id: cleanText(itemId),
+    title,
+    brand,
+    product_category: category_tree.length
+      ? category_tree.map((category) => category.name).join(' > ')
+      : null,
+    category_tree,
+    description: await textOf(page, '#description-list'),
+    price: hasDiscount ? oldPrice : currentPrice,
+    sale_price: hasDiscount ? currentPrice : null,
+    availability: normalizeAvailability(await textOf(page, '#prices-wrapper')),
+    ...extractImages(mainSrc, gallerySrcs, url),
+    specs,
+    ...parseRating(await textOf(page, '#average-rating-info')),
+    gtin: findSpecValue(specs, /gtin|upc|ean/i),
+    mpn: findSpecValue(specs, /manufacturer number/i),
+    scraped_at: new Date().toISOString(),
+  };
+};
